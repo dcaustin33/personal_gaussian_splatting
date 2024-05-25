@@ -1,10 +1,11 @@
 import math
 import os
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 from torch import nn
 from tqdm import tqdm
+import numpy as np
 
 from splat.read_colmap import qvec2rotmat, qvec2rotmat_matrix
 from splat.utils import (
@@ -25,6 +26,10 @@ class Gaussians(nn.Module):
         e_opacity: float = 0.005,
         divide_scale: float = 1.6,
         gradient_pos_threshold: float = 0.0002,
+        opacity: Optional[np.array] = None,
+        scale: Optional[np.array] = None,
+        quaternion: Optional[np.array] = None,
+        
         model_path: str = ".",
     ) -> None:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -34,15 +39,23 @@ class Gaussians(nn.Module):
         self.colors = (
             (colors / 256).clone().requires_grad_(True).to(self.device).float()
         )
-        self.scales = torch.ones((len(self.points), 3)).to(self.device).float() * 0.001
-        # self.initialize_scale()
-
-        print("initialized_points")
-        self.quaternions = torch.zeros((len(self.points), 4)).to(self.device)
-        self.quaternions[:, 0] = 1.0
-        self.opacity = inverse_sigmoid(
-            .9999 * torch.ones((self.points.shape[0], 1), dtype=torch.float)
-        ).to(self.device)
+        if scale is None:
+            self.scales = torch.ones((len(self.points), 3)).to(self.device).float() * 0.01
+            # self.initialize_scale()
+        else:
+            self.scales = torch.tensor(scale).to(self.device).float()
+        if quaternion is None:
+            self.quaternions = torch.zeros((len(self.points), 4)).to(self.device)
+            self.quaternions[:, 0] = 1.0
+        else:
+            self.quaternions = torch.tensor(quaternion).to(self.device).float()
+            
+        if opacity is None:
+            self.opacity = inverse_sigmoid(
+                e_opacity * torch.ones((self.points.shape[0], 1), dtype=torch.float)
+            ).to(self.device)
+        else:
+            self.opacity = torch.tensor(opacity).to(self.device).float()
 
     def initialize_scale(
         self,

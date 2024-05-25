@@ -156,20 +156,19 @@ class GaussianScene(nn.Module):
         min_y = min_y[indices_by_depth]
         max_x = max_x[indices_by_depth]
         max_y = max_y[indices_by_depth]
-
         return PreprocessedScene(
             points=points,
             colors=colors,
-            covariance_2d=covariance_2d,
-            depths=points_view[:, 2],
             inverse_covariance_2d=inverse_covariance,
-            radius=radius,
             points_xy=points_xy,
             min_x=min_x,
             min_y=min_y,
             max_x=max_x,
             max_y=max_y,
             sigmoid_opacity=torch.sigmoid(opacity),
+            # depths=points_view[:, 2],
+            # radius=radius,
+            # covariance_2d=covariance_2d,
         )
 
     def render_pixel(
@@ -345,20 +344,28 @@ torch::Tensor opacity);"""
         height = self.images[image_idx].height
         width = self.images[image_idx].width
         # ext = self.compile_cuda_ext()
+        
+        points = preprocessed_scene.points
+        points_truth = (points[:, 0] < 6000) & (points[:, 0] > 0) & (points[:, 1] < 3744) & (points[:, 1] > 0)
+        # randomly sample 100000 points
+        points_truth = points_truth & (torch.rand(points_truth.shape,).to(points.device) < 0.1)
+        
+        
+        print("Number of points: ", points_truth.sum()  )
 
         now = time.time()
         image = ext.render_image(
             height,
             width,
             tile_size,
-            preprocessed_scene.points.contiguous(),
-            preprocessed_scene.colors.contiguous(),
-            preprocessed_scene.inverse_covariance_2d.contiguous(),
-            preprocessed_scene.min_x.contiguous(),
-            preprocessed_scene.max_x.contiguous(),
-            preprocessed_scene.min_y.contiguous(),
-            preprocessed_scene.max_y.contiguous(),
-            preprocessed_scene.sigmoid_opacity.contiguous(),
+            preprocessed_scene.points.contiguous()[points_truth],
+            preprocessed_scene.colors.contiguous()[points_truth],
+            preprocessed_scene.inverse_covariance_2d.contiguous()[points_truth],
+            preprocessed_scene.min_x.contiguous()[points_truth],
+            preprocessed_scene.max_x.contiguous()[points_truth],
+            preprocessed_scene.min_y.contiguous()[points_truth],
+            preprocessed_scene.max_y.contiguous()[points_truth],
+            preprocessed_scene.sigmoid_opacity.contiguous()[points_truth],
         )
         torch.cuda.synchronize()
         print("Operation took seconds: ", time.time() - now)
